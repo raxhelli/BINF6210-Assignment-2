@@ -1,0 +1,117 @@
+---
+title: "BINF6210 Assignment 2"
+author: "Yuqi Li"
+date: "2023-10-17"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+# Code Section 1 
+## Data Acquisition, Exploration, Filtering, and Quality Control
+```{r}
+# Loading library
+library(tidyverse)
+library(ggplot2)
+library(rentrez)
+library(seqinr)
+library(Biostrings)
+library(randomForest)
+```
+
+
+```{r}
+# Data acquisition from NCBI
+search_result <- entrez_search(db = "nuccore", term = "Salmo[ORGN] AND (COI[Gene] OR CytB[Gene])" , use_history = T, retmax = 2000)
+search_result
+
+source("Entrez_Functions.R")
+FetchFastaFiles(searchTerm = "Salmo[ORGN] AND COI[Gene] OR CytB[Gene])", seqsPerFile = 100, fastaFileName = "Salmon_fetch.fasta")
+
+dfSalmon <- MergeFastaFiles(filePattern = "Salmon_fetch.fasta*")
+
+#dfSalmo$Gene_Name <- word(str_extract(dfSalmo$Title, "\\(\\w+\\)"), 1)
+```
+```{r}
+# Data Cleaning
+dfSalmon_clean <- dfSalmon %>% 
+  mutate(Gene_Name = word(str_extract(dfSalmon$Title, "\\(\\w+\\)"), 1)) %>% 
+  mutate(Gene_Name = str_replace_all(Gene_Name, "\\(|\\)", "")) %>% 
+  mutate(Gene_Name = str_to_upper(Gene_Name)) %>% 
+  filter(!is.na(Sequence)) %>% 
+  filter(!is.na(Gene_Name)) %>% 
+  filter(Gene_Name == "COI" | Gene_Name == "CYTB")
+```
+
+
+```{r}
+# Random Forest 
+q1 <- quantile(nchar(dfSalmon_clean$Sequence[dfSalmon_clean$Gene_Name == "COI"]), probs = 0.25, na.rm = TRUE)
+q1
+
+q3 <- quantile(nchar(dfSalmon_clean$Sequence[dfSalmon_clean$Gene_Name == "COI"]), probs = 0.75, na.rm = TRUE)
+q3
+
+#dfSalmo_clean <- dfSalmo_clean %>%
+#  filter(str_count(Sequence) >= q1 & str_count(Sequence) <= q3)
+```
+
+```{r}
+dfSeq <- cbind(dfSeq, as.data.frame(letterFrequency(dfSeq$nucleotides2, letters = c("A", "C","G", "T"))))
+
+dfSeq$Aprop <- (dfSeq$A) / (dfSeq$A + dfSeq$T + dfSeq$C + dfSeq$G)
+dfSeq$Tprop <- (dfSeq$T) / (dfSeq$A + dfSeq$T + dfSeq$C + dfSeq$G)
+dfSeq$Gprop <- (dfSeq$G) / (dfSeq$A + dfSeq$T + dfSeq$C + dfSeq$G)
+
+dfSeq <- cbind(dfSeq, as.data.frame(dinucleotideFrequency(dfSeq$nucleotides2, as.prob = TRUE)))
+
+dfSeq <- cbind(dfSeq, as.data.frame(trinucleotideFrequency(dfSeq$nucleotides2, as.prob = TRUE)))
+```
+
+
+
+
+Using BOLD
+```{r}
+# Data Acquisition from BOLD
+Salmoninae <- read_tsv("http://www.boldsystems.org/index.php/API_Public/combined?taxon=Salmoninae&format=tsv")
+dfBOLD <- Salmoninae
+```
+
+```{r}
+# Data cleaning
+dfBOLD_clean <- dfBOLD %>% 
+  filter(!is.na(markercode)) %>% 
+  filter(!is.na(species_name)) %>% 
+  filter(!is.na(nucleotides))
+  #filter(genus_name == "Salmo" | genus_name == "Oncorhynchus")
+
+#dfCOI28S <- dfBOLD %>%
+#  filter(!is.na(nucleotides)) %>%
+#  filter(!is.na(genus_name)) %>% 
+#  filter(genus_name == "Salmo" | genus_name == "Oncorhynchus")
+
+dfSeq <- dfBOLD_clean %>%
+  mutate(nucleotides2 = str_remove(nucleotides, "^[-N]+")) %>%
+  mutate(nucleotides2 = str_remove(nucleotides2, "[-N]+$")) %>%
+  mutate(nucleotides2 = str_remove_all(nucleotides2, "-+")) %>%
+  filter(str_count(nucleotides2, "N") <= (0.05 * str_count(nucleotides)))
+```
+
+```{r}
+# Visualization
+```
+
+
+# Code Section 2 Machine Learning Classifier
+```{r}
+
+```
+
+# Results and Discussion
+
+# References
