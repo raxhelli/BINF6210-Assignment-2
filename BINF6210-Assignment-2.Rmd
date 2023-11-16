@@ -37,35 +37,26 @@ library(tidyverse)
 
 ## 2) Data Acquisition
 
-Code block changed by Qingyuan: In the dfNCBI I can see there are some whole mitochondrial genomes and very short sequences. To prevent this situation and make the next filtering step easier you can limit the sequence length from 500 to 800 for COI and from 600 to 1200 for CytB.
 ```{r, results = "hide"}
 # Data acquisition from NCBI
-#search_result <- entrez_search(db = "nuccore", 
-#  term = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", use_history = T)
+search_result <- entrez_search(db = "nuccore", 
+  term = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", use_history = T)
 
 # Fetch data from NCBI using helper function "Entrez_Functions.R"
 source("Entrez_Functions.R")
-#FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", 
-#                seqsPerFile = 100, fastaFileName = "Salmon_fetch.fasta")
+FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", 
+                seqsPerFile = 100, fastaFileName = "Salmon_fetch.fasta")
 
 
 # Merge all fasta files and store it as a data frame 
-#dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch.fasta*") %>%
-#  mutate(Sequence_Length = nchar(Sequence)) 
-
-FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND COI[Gene] AND 500:800[SLEN]", 
-                seqsPerFile = 100, fastaFileName = "Salmon_fetch_1.fasta")
-FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND CytB[Gene] AND 600:1200[SLEN])", 
-                seqsPerFile = 100, fastaFileName = "Salmon_fetch_2.fasta")
-# Merge all fasta files and store it as a data frame 
-dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch_.+.fasta.*") %>%
-  mutate(Sequence_Length = nchar(Sequence))
+dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch.fasta*") %>%
+  mutate(Sequence_Length = nchar(Sequence)) 
 ```
 
 
 ## 3) Data Filtering & Exploration
 
-Code block changed by Qingyuan: I changed the way of extracting gene names into the new column because I notice some of the Title have different format that the gene names are not in the parentheses. (?i) means case insensitive.
+Code block changed by Qingyuan:  In the dfNCBI I can see there are some whole mitochondrial genomes. To prevent this situation you can extract two words "complete" and "partial" to a new column and then filter out complete in the next step. I also changed the way of extracting gene names into the new column because I notice some of the Title have different format that the gene names are not in the parentheses. (?i) means case insensitive. My comments are after "##" for the lines I changed in the code block.
 ```{r, warning = FALSE}
 dfSalmon <- dfNCBI %>% 
   # filter out samples with missing sequence
@@ -80,13 +71,19 @@ dfSalmon <- dfNCBI %>%
   # replace parentheses with nothing
   #mutate(Gene_Name = str_replace_all(Gene_Name, "\\(|\\)", "")) %>% 
   
-  ## Comment from Qingyuan: I change the way of extracting gene name into the new column
+  ## I extract the words "complete" and "partial" to
+  mutate(Sequence_Type = word(str_extract(Title, "(?i)complete|partial"))) %>%
+  ## I change the way of extracting gene name into the new column
   mutate(Gene_Name = word(str_extract(Title, "(?i)cytb|COI"))) %>%
   
   # convert all letter to upper case
   mutate(Gene_Name = str_to_upper(Gene_Name)) %>% 
-  # filter out samples of COI or CYTB genes
+
+  ## filter out complete genomes
+  filter(Sequence_Type == "partial") %>%  
+  # filter out samples of COI or CYTB genes  
   filter(Gene_Name == "COI" | Gene_Name == "CYTB") %>% 
+
   # extract column 2 within in the Title column, store in Genus_Name variable
   
   mutate(Genus_Name = word(Title, 2L)) %>% 
@@ -100,6 +97,12 @@ dfSalmon <- dfNCBI %>%
   mutate(id = row_number()) %>% 
   # rearrange columns
   select("id", "Title", "Genus_Name", "Gene_Name", "Sequence", "Sequence_Length")
+
+## Check if all the complete sequences have been deleted and the columns Gene_Name and 
+## Genus_Name are properly filterd
+sum(dfSalmon$Sequence_Type == "(?i)complete")
+table(dfSalmon$Gene_Name)
+table(dfSalmon$Genus_Name)
 ```
 
 
@@ -116,7 +119,9 @@ summary(dfSalmon_CYTB$Sequence_Length)
 
 \newpage
 ## 4) Data Exploration & Figures
-```{r, fig.cap = "**Histogram Illustrating the Distribution of COI Gene Sequence Length in Salmoninae Samples**. The x-axis divides mRNA sequence lengths into 10 equal bins, ranging approximately from 0 to 1500 nucleotides. The y-axis illustrates frequency. Each bar represents the number of samples falling within a specific bin. The solid black vertical line denotes the median value of 652 nucleotides, and the two orange dashed lines signify the 1st (q1) and 3rd (q3) quartiles. The clustering of the three lines results from the proximity of their values. Notably, the majority of COI gene sequences span 648 to 652 nucleotides in length. (n = 1954)"}
+
+ ## Comment from Qingyuan: I changed some numbers in the figure description because they changed after the steps of limiting sequence length and data filtering.
+```{r, fig.cap = "**Histogram Illustrating the Distribution of COI Gene Sequence Length in Salmoninae Samples**. The x-axis divides mRNA sequence lengths into 10 equal bins, ranging approximately from 0 to 1500 nucleotides. The y-axis illustrates frequency. Each bar represents the number of samples falling within a specific bin. The solid black vertical line denotes the median value of 652 nucleotides, and the two orange dashed lines signify the 1st (q1) and 3rd (q3) quartiles. The clustering of the three lines results from the proximity of their values. Notably, the majority of COI gene sequences span 648 to 652 nucleotides in length. (n = 1947)"}
 
 dfSalmon_COI %>% ggplot(aes(x = Sequence_Length)) +
   geom_histogram(bins = 10, color = "#000000", fill = "mediumpurple") +
@@ -136,7 +141,8 @@ dfSalmon_COI %>% ggplot(aes(x = Sequence_Length)) +
 
 
 \newpage
-```{r, fig.cap = "**Histogram Illustrating the Distribution of CYTB Gene Sequence Length in Salmoninae Samples**. The x-axis divides mRNA sequence lengths into 10 equal bins, ranging approximately from 0 to 1500 nucleotides. The y-axis illustrates frequency. Each bar represents the number of samples falling within a specific bin. The solid black vertical line denotes the median value of 1018 nucleotides, and the two orange dashed lines signify the 1st (q1) and 3rd (q3) quartiles. Notably, the majority of CYTB gene sequences span 866 to 1141 nucleotides in length. However, a substantial portion of shorter sequences spanning approximately 50 to 550 nucleotides also contribute to the overall distribution. (n = 2008)"}
+ ## Comment from Qingyuan: I changed some numbers in the figure description because they changed after the steps of limiting sequence length and data filtering.
+```{r, fig.cap = "**Histogram Illustrating the Distribution of CYTB Gene Sequence Length in Salmoninae Samples**. The x-axis divides mRNA sequence lengths into 10 equal bins, ranging approximately from 0 to 1500 nucleotides. The y-axis illustrates frequency. Each bar represents the number of samples falling within a specific bin. The solid black vertical line denotes the median value of 1015 nucleotides, and the two orange dashed lines signify the 1st (q1) and 3rd (q3) quartiles. Notably, the majority of CYTB gene sequences span 557 to 1131 nucleotides in length. (n = 1944)"}
 
 dfSalmon_CYTB %>% ggplot(aes(x = Sequence_Length)) +
   geom_histogram(bins = 10, color = "#000000", fill = "mediumpurple") +
@@ -157,7 +163,14 @@ dfSalmon_CYTB %>% ggplot(aes(x = Sequence_Length)) +
 
 \newpage
 ## 5) Quality Control
+
+Code block changed by Qingyuan: I added a step to filter out sequences that are too short or too long. For COI, the sequence length is generally between 500 and 700; for CYTB, the sequence length is generally between 600 and 100. However, because the plot above shows lengths of many sequences of CYTB are around 1200, so I set the high threshold to 1300.
 ```{r}
+## Filtering sequences that are too long or too short.
+dfSalmon <- dfSalmon %>%
+  filter((Gene_Name == "COI" & Sequence_Length >= 500 & Sequence_Length <= 700)|
+           (Gene_Name == "CYTB" & Sequence_Length >= 600 & Sequence_Length <= 1300))  
+
 # Calculate the 1st and 3rd quartiles of COI sequences
 q1_COI <- quantile(nchar(dfSalmon$Sequence[dfSalmon$Gene_Name == "COI"]),
                probs = 0.25, na.rm = TRUE)
@@ -170,12 +183,15 @@ q1_CYTB <- quantile(nchar(dfSalmon$Sequence[dfSalmon$Gene_Name == "CYTB"]),
 q3_CYTB <- quantile(nchar(dfSalmon$Sequence[dfSalmon$Gene_Name == "CYTB"]), 
                probs = 0.75, na.rm = TRUE)
 
+
 dfSalmon <- dfSalmon %>%
-  # filter out sequences outside the interquartile range
+  # filter out sequences outside the interquartile range of CYTB
   filter(str_count(Sequence) >= q1_COI & str_count(Sequence) <= q3_COI & 
            Gene_Name == "COI" | str_count(Sequence) >= q1_CYTB & 
            str_count(Sequence) <= q3_CYTB & Gene_Name == "CYTB")
+
 ```
+
 
 
 \newpage
@@ -207,17 +223,31 @@ dfSalmon <- cbind(dfSalmon, as.data.frame(trinucleotideFrequency(dfSalmon$Sequen
 
 
 ## 2) Dataset Spliting
+
+Code block changed by Qingyuan: I add comments after "##" for the code I changed.
 ```{r}
 # Change Sequence in dfSalmon back to character class
 dfSalmon$Sequence <- as.character(dfSalmon$Sequence)
 
-# Set seed
+## Check the number of sequences from the two different gene.
+table(dfSalmon$Gene_Name)
+
+## Count how many times 'CYTB' appears in the 'Gene_Name' column
+## And save the round number of 40% of total sequences that are CYTB
+cytb_count <- sum(dfSalmon$Gene_Name == "CYTB")
+n1 <- round(0.25*cytb_count)
+## n2 is for sample number in the training part
+n2 <- cytb_count - n1
+
+# Set a seed
 set.seed(000)
 
-# Sample 350 observations in each gene group into the validation dataset
+## Sample n1 observations in each gene group into the validation dataset
 dfValidation <- dfSalmon %>%
   group_by(Gene_Name) %>%
-  sample_n(350)
+  sample_n(n1)
+## Checking if there are 194 records of each gene
+table(dfValidation$Gene_Name)
 
 # From the remaining observations, sample 789 observations in each gene group into 
 # the training dataset
@@ -226,8 +256,11 @@ dfTraining <- dfSalmon %>%
   group_by(Gene_Name) %>%
   #sample_n(789)
   
-  ## Comment from Qingyuan: I changed the number because the number of sequences changed
-  sample_n(777)
+  ## I changed the number inside with a vector n2
+  sample_n(n2)
+
+## Checking if there are 581 records of each gene
+table(dfTraining$Gene_Name)
 ```
 
 
@@ -242,8 +275,8 @@ Code block changed by Qingyuan: I write a function for building classifier to ma
 #classifier_1
 
 ## Comment from Qingyuan: Writing a function for building classifier
-BuildClassifier <- function(a,b) {
-  classifier <- randomForest::randomForest(x = dfTraining[,a:b], 
+BuildClassifier <- function(start_col,end_col) {
+  classifier <- randomForest::randomForest(x = dfTraining[,start_col:end_col], 
   y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
   return(classifier)
 }
@@ -281,82 +314,33 @@ classifier_4
 
 ## 4) Classifier Validation
 
-
+Code block changed by Qingyuan: I write a function to input different classifier and columns then output the confusion matrix plot
 ```{r}
-# Using classifier 1, predict the classification of samples in the validation dataset
-predictValidation <- predict(classifier_1, dfValidation[, 5])
-# Create a confusion matrix in the table format
-matrix_table <- table(observed = dfValidation$Gene_Name, 
-                      predicted = predictValidation)
-# Store the table as a tibble
-matrix_tibble <- as_tibble(matrix_table)
-# Plot the tibble as a confusion matrix plot
-plot_1 <- plot_confusion_matrix(matrix_tibble, target_col = "observed", 
-                                prediction_col = "predicted", counts_col = "n", 
-                                add_sums = TRUE, add_normalized = FALSE,
-                                add_col_percentages = FALSE,
-                                add_row_percentages = FALSE, palette = "Purples", 
-                                sums_settings = sum_tile_settings(palette = "Oranges", 
-                                                                  label = "Total"))
-```
+## Comment from Qingyuan: I write the function to plot a confusion matrix plot 
+## using classifier built in the last code block.
+CMPlotusingClassifier <- function(classifier,start_col,end_col) {
+  # Using different classifier, predict the classification of samples in the validation dataset
+  predictValidation <- predict(classifier, dfValidation[, start_col:end_col])
+  # Create a confusion matrix in the table format
+  matrix_table <- table(observed = dfValidation$Gene_Name, 
+                        predicted = predictValidation)
+  # Store the table as a tibble
+  matrix_tibble <- as_tibble(matrix_table)
+  # Plot the tibble as a confusion matrix plot
+  PLOT <- plot_confusion_matrix(matrix_tibble, target_col = "observed", 
+                                  prediction_col = "predicted", counts_col = "n", 
+                                  add_sums = TRUE, add_normalized = FALSE,
+                                  add_col_percentages = FALSE,
+                                  add_row_percentages = FALSE, palette = "Purples", 
+                                  sums_settings = sum_tile_settings(palette = "Oranges", 
+                                                                    label = "Total"))
+  return(PLOT)
+}
 
-
-
-```{r}
-# Using classifier 2, predict the classification of samples in the validation dataset
-predictValidation_2 <- predict(classifier_2, dfValidation[, 11:14])
-# Create a confusion matrix in the table format
-matrix_table_2 <- table(observed = dfValidation$Gene_Name, 
-                        predicted = predictValidation_2)
-# Store the table as a tibble
-matrix_tibble_2 <- as_tibble(matrix_table_2)
-# Plot the tibble as a confusion matrix plot
-plot_2 <- plot_confusion_matrix(matrix_tibble_2, target_col = "observed", 
-                                prediction_col = "predicted", counts_col = "n", 
-                                add_sums = TRUE, add_col_percentages = FALSE,
-                                add_row_percentages = FALSE, 
-                                add_normalized = FALSE, palette = "Purples", 
-                                sums_settings = sum_tile_settings(palette = "Oranges", 
-                                                                  label = "Total"))
-```
-
-
-
-```{r}
-# Using classifier 3, predict the classification of samples in the validation dataset
-predictValidation_3 <- predict(classifier_3, dfValidation[, 15:30])
-# Create a confusion matrix in the table format
-matrix_table_3 <- table(observed = dfValidation$Gene_Name, 
-                        predicted = predictValidation_3)
-# Store the table as a tibble
-matrix_tibble_3 <- as_tibble(matrix_table_3)
-# Plot the tibble as a confusion matrix plot
-plot_3 <- plot_confusion_matrix(matrix_tibble_3, target_col = "observed", 
-                                prediction_col = "predicted", counts_col = "n", 
-                                add_sums = TRUE, add_col_percentages = FALSE,
-                                add_row_percentages = FALSE, 
-                                add_normalized = FALSE, palette = "Purples", 
-                                sums_settings = sum_tile_settings(palette = "Oranges", 
-                                                                  label = "Total"))
-```
-
-
-```{r}
-# Using classifier 4, predict the classification of samples in the validation dataset
-predictValidation_4 <- predict(classifier_4, dfValidation[, 31:94])
-# Create a confusion matrix in the table format
-matrix_table_4 <- table(observed = dfValidation$Gene_Name, 
-                        predicted = predictValidation_4)
-# Store the table as a tibble
-matrix_tibble_4 <- as_tibble(matrix_table_4)
-# Plot the tibble as a confusion matrix plot
-plot_4 <- plot_confusion_matrix(matrix_tibble_4, target_col = "observed", 
-                                prediction_col = "predicted", counts_col = "n", 
-                                add_sums = TRUE, add_col_percentages = FALSE,
-                                add_row_percentages = FALSE, 
-                                add_normalized = FALSE, palette = "Purples", 
-                                sums_settings = sum_tile_settings(palette = "Oranges", 
-                                                                  label = "Total"))
+plot_1 <- CMPlotusingClassifier(classifier_1,5,5)
+plot_2 <- CMPlotusingClassifier(classifier_2,11,14)
+plot_3 <- CMPlotusingClassifier(classifier_3,15,30)
+plot_4 <- CMPlotusingClassifier(classifier_4,31,94)
 ```
 
 
