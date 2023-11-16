@@ -1,7 +1,7 @@
 ---
 title: 'Exploring mRNA Gene Identification in Salmoninae through K-Mer Features and Random Forest Classifiers'
 subtitle: "BINF6210 Assignment #2"
-author: "Yuqi Li"
+author: "Yuqi Li, Qingyuan Pei"
 date: "2023-10-27"
 output: 
   pdf_document:
