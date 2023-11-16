@@ -36,21 +36,36 @@ library(tidyverse)
 
 
 ## 2) Data Acquisition
+
+Code block changed by Qingyuan: In the dfNCBI I can see there are some whole mitochondrial genomes and very short sequences. To prevent this situation and make the next filtering step easier you can limit the sequence length from 500 to 800 for COI and from 600 to 1200 for CytB.
 ```{r, results = "hide"}
 # Data acquisition from NCBI
-search_result <- entrez_search(db = "nuccore", 
-  term = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", use_history = T)
+#search_result <- entrez_search(db = "nuccore", 
+#  term = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", use_history = T)
 
 # Fetch data from NCBI using helper function "Entrez_Functions.R"
 source("Entrez_Functions.R")
-FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", 
-                seqsPerFile = 100, fastaFileName = "Salmon_fetch.fasta")
+#FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND (COI[Gene] OR CytB[Gene])", 
+#                seqsPerFile = 100, fastaFileName = "Salmon_fetch.fasta")
+
 
 # Merge all fasta files and store it as a data frame 
-dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch.fasta*")
+#dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch.fasta*") %>%
+#  mutate(Sequence_Length = nchar(Sequence)) 
+
+FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND COI[Gene] AND 500:800[SLEN]", 
+                seqsPerFile = 100, fastaFileName = "Salmon_fetch_1.fasta")
+FetchFastaFiles(searchTerm = "Salmoninae[ORGN] AND CytB[Gene] AND 600:1200[SLEN])", 
+                seqsPerFile = 100, fastaFileName = "Salmon_fetch_2.fasta")
+# Merge all fasta files and store it as a data frame 
+dfNCBI <- MergeFastaFiles(filePattern = "Salmon_fetch_.+.fasta.*") %>%
+  mutate(Sequence_Length = nchar(Sequence))
 ```
 
+
 ## 3) Data Filtering & Exploration
+
+Code block changed by Qingyuan: I changed the way of extracting gene names into the new column because I notice some of the Title have different format that the gene names are not in the parentheses. (?i) means case insensitive.
 ```{r, warning = FALSE}
 dfSalmon <- dfNCBI %>% 
   # filter out samples with missing sequence
@@ -61,9 +76,13 @@ dfSalmon <- dfNCBI %>%
   mutate(Sequence_Length = nchar(Sequence)) %>% 
   
   # extract words inside the parentheses, store in Gene_Name variable
-  mutate(Gene_Name = word(str_extract(Title, "\\(\\w+\\)"), 1)) %>% 
+  #mutate(Gene_Name = word(str_extract(Title, "\\(\\w+\\)"), 1)) %>% 
   # replace parentheses with nothing
-  mutate(Gene_Name = str_replace_all(Gene_Name, "\\(|\\)", "")) %>% 
+  #mutate(Gene_Name = str_replace_all(Gene_Name, "\\(|\\)", "")) %>% 
+  
+  ## Comment from Qingyuan: I change the way of extracting gene name into the new column
+  mutate(Gene_Name = word(str_extract(Title, "(?i)cytb|COI"))) %>%
+  
   # convert all letter to upper case
   mutate(Gene_Name = str_to_upper(Gene_Name)) %>% 
   # filter out samples of COI or CYTB genes
@@ -94,7 +113,6 @@ dfSalmon_CYTB <- dfSalmon %>%
   filter(Gene_Name == "CYTB")
 summary(dfSalmon_CYTB$Sequence_Length)
 ```
-
 
 \newpage
 ## 4) Data Exploration & Figures
@@ -160,7 +178,6 @@ dfSalmon <- dfSalmon %>%
 ```
 
 
-
 \newpage
 # Code Section 2: Random Forest Classifiers
 
@@ -207,45 +224,64 @@ dfValidation <- dfSalmon %>%
 dfTraining <- dfSalmon %>%
   filter(!id %in% dfValidation$id) %>%
   group_by(Gene_Name) %>%
-  sample_n(789)
+  #sample_n(789)
+  
+  ## Comment from Qingyuan: I changed the number because the number of sequences changed
+  sample_n(777)
 ```
 
 
 \newpage
 ## 3) Random Forest Classifiers
+
+Code block changed by Qingyuan: I write a function for building classifier to make the code more tidy and space saving.
 ```{r}
 # Building classifier using only mRNA sequence
-classifier_1 <- randomForest::randomForest(x = dfTraining[, 5], 
+#classifier_1 <- randomForest::randomForest(x = dfTraining[, 5], 
+  #y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
+#classifier_1
+
+## Comment from Qingyuan: Writing a function for building classifier
+BuildClassifier <- function(a,b) {
+  classifier <- randomForest::randomForest(x = dfTraining[,a:b], 
   y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
+  return(classifier)
+}
+
+classifier_1 <- BuildClassifier(5,5)
 classifier_1
+classifier_2 <- BuildClassifier(11,14)
+classifier_2
+classifier_3 <- BuildClassifier(15,30)
+classifier_3
+classifier_4 <- BuildClassifier(31,94)
+classifier_4
 ```
-
-
 
 ```{r}
 # Building classifier using A, C, T, and G frequency (K = 1)
-classifier_2 <- randomForest::randomForest(x = dfTraining[, 11:14], 
-  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
-classifier_2
+#classifier_2 <- randomForest::randomForest(x = dfTraining[, 11:14], 
+#  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
+#classifier_2
 ```
-
-
 
 ```{r}
 # Building classifier using dinucleotide frequency (K = 2)
-classifier_3 <- randomForest::randomForest(x = dfTraining[, 15:30], 
-  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
-classifier_3
+#classifier_3 <- randomForest::randomForest(x = dfTraining[, 15:30], 
+#  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
+#classifier_3
 ```
 
 ```{r}
 # Building classifier using trinucleotide frequency (K = 3)
-classifier_4 <- randomForest::randomForest(x = dfTraining[, 31:94], 
-  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
-classifier_4
+#classifier_4 <- randomForest::randomForest(x = dfTraining[, 31:94], 
+#  y = as.factor(dfTraining$Gene_Name), ntree = 50, importance = TRUE)
+#classifier_4
 ```
 
 ## 4) Classifier Validation
+
+
 ```{r}
 # Using classifier 1, predict the classification of samples in the validation dataset
 predictValidation <- predict(classifier_1, dfValidation[, 5])
