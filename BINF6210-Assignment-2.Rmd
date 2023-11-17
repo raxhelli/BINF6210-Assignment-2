@@ -233,7 +233,7 @@ dfSalmon$Sequence <- as.character(dfSalmon$Sequence)
 table(dfSalmon$Gene_Name)
 
 ## Count how many times 'CYTB' appears in the 'Gene_Name' column
-## And save the round number of 40% of total sequences that are CYTB
+## And save the round number of 25% of total sequences that are CYTB
 cytb_count <- sum(dfSalmon$Gene_Name == "CYTB")
 n1 <- round(0.25*cytb_count)
 ## n2 is for sample number in the training part
